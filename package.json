@@ -1,0 +1,15 @@
+{
+  "name": "bullsy",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bullsy: a stock-market learning game played on real past Indian index data",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build-data.js",
+    "start": "node scripts/build-data.js && node server/index.js",
+    "test": "node scripts/build-data.js && node test/data.test.js"
+  }
+}

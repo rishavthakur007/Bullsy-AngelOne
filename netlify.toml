@@ -1,0 +1,14 @@
+# Netlify: Bullsy is a static site. Netlify rebuilds data.json from the CSV files
+# in data/ on every deploy, then publishes the public/ folder.
+[build]
+  command = "node scripts/build-data.js"
+  publish = "public"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

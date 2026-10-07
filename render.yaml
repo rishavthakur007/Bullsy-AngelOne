@@ -1,0 +1,13 @@
+# Render Blueprint for Bullsy: one free web service that serves the game.
+# No environment variables are needed. The data comes from the CSV files in data/.
+services:
+  - type: web
+    name: bullsy
+    runtime: node
+    plan: free
+    buildCommand: node scripts/build-data.js
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
