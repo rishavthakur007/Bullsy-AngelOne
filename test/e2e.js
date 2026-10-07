@@ -11,7 +11,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let pass = 0, failed = 0; const ok = (c, n, x = '') => { c ? pass++ : failed++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${c ? '' : '  ' + x}`); };
 
 const mock = await startAngelMock({ port: 4810 });
-const child = spawn(process.execPath, ['server/index.js'], { cwd: root, env: { PATH: process.env.PATH, BULLSY_SKIP_ENV_FILE: '1', PORT: '4710', ANGEL_API_BASE: 'http://127.0.0.1:4810', ANGEL_API_KEY: 'KEY12345', ANGEL_CLIENT_CODE: 'A12345', ANGEL_PIN: '4321', ANGEL_TOTP_SECRET: 'JBSWY3DPEHPK3PXP', ADMIN_PASSWORD: 'pw', BULLSY_DATA_DELAY_DAYS: '0' } });
+const child = spawn(process.execPath, ['server/index.js'], { cwd: root, env: { PATH: process.env.PATH, BULLSY_SKIP_ENV_FILE: '1', PORT: '4710', ANGEL_API_BASE: 'http://127.0.0.1:4810', ANGEL_API_KEY: 'KEY12345', ANGEL_CLIENT_CODE: 'A12345', ANGEL_PIN: '4321', ANGEL_TOTP_SECRET: 'JBSWY3DPEHPK3PXP', ANGEL_MIN_INTERVAL_MS: '120', ADMIN_PASSWORD: 'pw', BULLSY_DATA_DELAY_DAYS: '0' } });
 await sleep(3000);
 const browser = await chromium.launch(), page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
 const errs = []; page.on('pageerror', e => errs.push(e.message));

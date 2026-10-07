@@ -78,6 +78,7 @@ export class AngelOneProvider {
         const json = await this.#post('/rest/auth/angelbroking/user/v1/loginByPassword', { clientcode: this.cfg.clientCode, password: this.cfg.pin, totp: totp(this.cfg.totpSecret) }, false);
         if (!json.data?.jwtToken) throw new ProviderError('Angel One login returned no session token', { auth: true });
         this.jwt = json.data.jwtToken.replace(/^Bearer\s+/i, ''); this.lastLoginAt = Date.now(); this.lastLoginError = null;
+        this.lastCall = Date.now();          // leave a gap after signing in before the first data request
         this.log.info('[angelone] signed in');
       } catch (e) { this.jwt = null; this.lastLoginError = e.message; e.auth = true; throw e; }
       finally { this.loggingIn = null; }
@@ -85,15 +86,23 @@ export class AngelOneProvider {
     return this.loggingIn;
   }
   relogin() { this.jwt = null; return this.login(true); }
-  /* Authenticated call: spaced out to stay under Angel's 3 requests/second on candles; signs in again once if the session has expired. */
+  /* Authenticated call. Requests go out one at a time with a gap between them, because Angel One
+     refuses bursts ("exceeding access rate"). A refused request is retried after a longer wait,
+     up to 3 times. An expired session is renewed once. */
   #api(path, body) {
+    const gap = this.cfg.minIntervalMs || 1100, sleep = ms => new Promise(r => setTimeout(r, ms));
     const run = async () => {
-      for (let attempt = 0; ; attempt++) {
+      let relogged = false, retries = 0;
+      for (;;) {
         if (!this.jwt) await this.login();
-        const wait = this.lastCall + 400 - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        const wait = this.lastCall + gap - Date.now(); if (wait > 0) await sleep(wait);
         this.lastCall = Date.now();
         try { return await this.#post(path, body, true); }
-        catch (e) { if (e.auth && attempt === 0) { this.jwt = null; continue; } throw e; }
+        catch (e) {
+          if (e.auth && !relogged) { relogged = true; this.jwt = null; continue; }
+          if (e.rateLimited && retries < 3) { retries++; this.rateLimitHits = (this.rateLimitHits || 0) + 1; await sleep(gap * 2 ** retries); continue; }
+          throw e;
+        }
       }
     };
     const p = this.queue.then(run, run); this.queue = p.catch(() => {}); return p;

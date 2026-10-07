@@ -28,6 +28,8 @@ export const config = {
   angel: {
     apiKey: env.ANGEL_API_KEY || '', clientCode: env.ANGEL_CLIENT_CODE || '', pin: env.ANGEL_PIN || '', totpSecret: env.ANGEL_TOTP_SECRET || '',
     apiBase: (env.ANGEL_API_BASE || 'https://apiconnect.angelone.in').replace(/\/$/, ''),
+    /* Shortest gap between two Angel One data requests. Angel One refuses bursts, so requests go out one at a time. */
+    minIntervalMs: Math.max(100, num(env.ANGEL_MIN_INTERVAL_MS, 1100)),
     tokenOverrides: Object.fromEntries(Object.entries(env).filter(([k, v]) => k.startsWith('ANGEL_TOKEN_') && v).map(([k, v]) => [k.slice(12), v]))
   },
   anthropicKey: env.ANTHROPIC_API_KEY || '',

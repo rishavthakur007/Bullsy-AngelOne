@@ -8,7 +8,7 @@ let pass = 0, failed = 0; const ok = (c, n, x = '') => { c ? pass++ : failed++; 
 const AUTH = { Authorization: 'Basic ' + Buffer.from('a:pw').toString('base64') }, CREDS = { ANGEL_API_KEY: 'KEY12345', ANGEL_CLIENT_CODE: 'A12345', ANGEL_PIN: '4321', ANGEL_TOTP_SECRET: 'JBSWY3DPEHPK3PXP' };
 const get = async (port, p, headers = {}) => { const r = await fetch(`http://127.0.0.1:${port}${p}`, { headers }); const text = await r.text(); let body = null; try { body = JSON.parse(text); } catch {} return { status: r.status, text, body }; };
 function bullsy(port, mockPort, env = {}) {
-  const child = spawn(process.execPath, ['server/index.js'], { cwd: root, env: { PATH: process.env.PATH, BULLSY_SKIP_ENV_FILE: '1', PORT: String(port), ANGEL_API_BASE: `http://127.0.0.1:${mockPort}`, ADMIN_PASSWORD: 'pw', BULLSY_POLL_INTERVAL_MS: '2000', ...CREDS, ...env } });
+  const child = spawn(process.execPath, ['server/index.js'], { cwd: root, env: { PATH: process.env.PATH, BULLSY_SKIP_ENV_FILE: '1', PORT: String(port), ANGEL_API_BASE: `http://127.0.0.1:${mockPort}`, ADMIN_PASSWORD: 'pw', BULLSY_POLL_INTERVAL_MS: '2000', ANGEL_MIN_INTERVAL_MS: '120', ...CREDS, ...env } });
   let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
   return { stop: () => new Promise(r => { child.on('exit', r); child.kill(); }), logs: () => logs };
 }
@@ -36,6 +36,24 @@ ok(totp('GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 59000) === '287082' && totp('GEZDGNB
   ok(/Angel One SmartAPI connection: <span class="ok">CONNECTED/.test(adm.text) && /Sign-in: <b>automatic/.test(adm.text), 'admin page shows Angel One CONNECTED with automatic sign-in');
   ok(![adm.text, pub, app.logs()].some(t => /KEY12345|4321\b|JBSWY3DPEHPK3PXP|jwt-\d/.test(t)), 'API key, PIN, TOTP secret and session token appear nowhere: not in pages, API or logs');
   await app.stop(); await mock.close();
+}
+/* Angel One refuses requests that come too fast: every index must still get its data */
+{
+  const mock = await startAngelMock({ port: 4865, minGapMs: 300 }), app = bullsy(4765, 4865, { BULLSY_DATA_DELAY_DAYS: '1', ANGEL_MIN_INTERVAL_MS: '100' }); await sleep(9000);
+  const q = (await get(4765, '/api/market/quotes')).body;
+  ok(mock.state.refused > 0, `the stand-in refused ${mock.state.refused} too-fast requests`);
+  ok(ids.every(id => q.quotes[id].status === 'DELAYED' && q.quotes[id].price > 0), 'refused requests are retried, so all 8 indices still get data', JSON.stringify(ids.map(id => q.quotes[id].status)));
+  const before = mock.state.candleCalls.length;
+  const many = await Promise.all(Array.from({ length: 6 }, () => get(4765, '/api/market/history/NIFTYIT?range=6M')));
+  ok(many.every(r => r.status === 200 && r.body.candles.length > 100) && mock.state.candleCalls.length - before === 1, '6 players asking for the same chart at once cause only 1 provider request');
+  await app.stop(); await mock.close();
+}
+{
+  const p = new AngelOneProvider({ apiKey: 'KEY12345', clientCode: 'A12345', pin: '4321', totpSecret: 'JBSWY3DPEHPK3PXP', apiBase: 'http://127.0.0.1:4866', tokenOverrides: {}, minIntervalMs: 250 }, { info() {}, warn() {}, error() {} });
+  const mock = await startAngelMock({ port: 4866 }); const t0 = Date.now();
+  await Promise.all(['NIFTY50', 'SENSEX', 'NIFTYBANK', 'NIFTYIT'].map(id => p.fetchCandles(id, 'days', 1, '2026-08-01', '2026-09-01')));
+  ok(Date.now() - t0 >= 4 * 250 - 20, `requests go out one at a time with a gap (${Date.now() - t0} ms for 4)`);
+  await mock.close();
 }
 /* real-time mode: polling */
 {

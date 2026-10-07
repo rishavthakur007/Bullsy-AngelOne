@@ -8,7 +8,7 @@ const AUTH = { Authorization: 'Basic ' + Buffer.from('admin:pw').toString('base6
 const get = async (port, p, headers = {}) => { const r = await fetch(`http://127.0.0.1:${port}${p}`, { headers }); const text = await r.text(); let body = null; try { body = JSON.parse(text); } catch {} return { status: r.status, headers: r.headers, text, body }; };
 function bullsy(port, mockPort, env = {}) {
   const child = spawn(process.execPath, ['server/index.js'], { cwd: root, env: { PATH: process.env.PATH, BULLSY_SKIP_ENV_FILE: '1', PORT: String(port), ANGEL_API_BASE: `http://127.0.0.1:${mockPort}`, ANGEL_API_KEY: 'KEY12345', ANGEL_CLIENT_CODE: 'A12345', ANGEL_PIN: '4321',
-    ANGEL_TOTP_SECRET: 'JBSWY3DPEHPK3PXP', ADMIN_PASSWORD: 'pw', FRONTEND_ORIGIN: 'https://bullsy.example', RENDER_EXTERNAL_URL: 'https://bullsy-x.onrender.com', ...env } });
+    ANGEL_TOTP_SECRET: 'JBSWY3DPEHPK3PXP', ANGEL_MIN_INTERVAL_MS: '120', ADMIN_PASSWORD: 'pw', FRONTEND_ORIGIN: 'https://bullsy.example', RENDER_EXTERNAL_URL: 'https://bullsy-x.onrender.com', ...env } });
   let logs = ''; child.stdout.on('data', d => logs += d); child.stderr.on('data', d => logs += d);
   return { stop: () => new Promise(r => { child.on('exit', r); child.kill(); }), logs: () => logs };
 }

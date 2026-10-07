@@ -9,8 +9,8 @@ const STEPS = [0.4, -0.3, 0.8, -0.6, 0.2, 1.1, -0.9, 0.3, -0.2, 0.5], MON = ['Ja
 const dstr = ms => new Date(ms + 19800000).toISOString().slice(0, 10);
 const idOf = (ex, tok) => Object.keys(TOKENS).find(id => TOKENS[id][0] === ex && TOKENS[id][1] === String(tok));
 
-export function startAngelMock({ port, apiKey = 'KEY12345', clientCode = 'A12345', pin = '4321', secret = 'JBSWY3DPEHPK3PXP', missing = [] } = {}) {
-  const state = { logins: 0, loginFailures: 0, candleCalls: [], quoteCalls: [], valid: new Set(), expireNext: false };
+export function startAngelMock({ port, apiKey = 'KEY12345', clientCode = 'A12345', pin = '4321', secret = 'JBSWY3DPEHPK3PXP', missing = [], minGapMs = 0 } = {}) {
+  const state = { logins: 0, loginFailures: 0, candleCalls: [], quoteCalls: [], valid: new Set(), expireNext: false, refused: 0, lastData: 0 };
   function daily(id, from, to) {
     const out = []; let price = BASE[id], i = 0; const end = Math.min(Date.parse(to + 'T00:00:00+05:30'), Date.now() - 86400000);
     for (let t = Date.parse('2024-01-01T00:00:00+05:30'); t <= end; t += 86400000) {
@@ -38,6 +38,8 @@ export function startAngelMock({ port, apiKey = 'KEY12345', clientCode = 'A12345
     const jwt = (req.headers.authorization || '').replace('Bearer ', '');
     if (state.expireNext) { state.expireNext = false; state.valid.clear(); }
     if (!state.valid.has(jwt)) return send(res, 200, { success: false, message: 'Invalid Token', errorCode: 'AG8001', data: '' });
+    /* like the real service: data requests that arrive too close together are refused with a plain-text message */
+    if (minGapMs) { const now = Date.now(); if (now - state.lastData < minGapMs) { state.refused++; res.writeHead(403, { 'Content-Type': 'text/plain' }); return res.end('Access denied because of exceeding access rate'); } state.lastData = now; }
     if (req.url === '/rest/secure/angelbroking/historical/v1/getCandleData') {
       state.candleCalls.push(body); const id = idOf(body.exchange, body.symboltoken);
       if (!id || missing.includes(id)) return send(res, 200, { status: true, message: 'SUCCESS', errorcode: '', data: [] });

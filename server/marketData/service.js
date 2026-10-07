@@ -29,6 +29,8 @@ export class MarketDataService {
     this.segments = { at: 0, map: {} };
     this.feed = { transport: 'none', streamOpen: false, error: null, authError: false, lastOk: 0 };
     this.cache = new Map();           // history cache
+    this.pending = new Map();         // history requests in flight
+    this.retryTimer = null; this.retryDelay = 30000;
     this.listeners = new Set();
     this.emitTimer = null; this.timers = [];
   }
@@ -49,7 +51,7 @@ export class MarketDataService {
     // Status labels depend on the clock (open/closed, freshness), so re-broadcast periodically.
     this.timers.push(setInterval(() => this.#emit(), 15000));
   }
-  stop() { this.timers.forEach(clearInterval); this.provider.stopStream?.(); }
+  stop() { this.stopped = true; this.timers.forEach(clearInterval); clearTimeout(this.retryTimer); this.provider.stopStream?.(); }
   /* Called after a new access token arrives (login callback). */
   async onCredentialsChanged() {
     this.feed.authError = false; this.feed.error = null; this.cache.clear();
@@ -108,6 +110,14 @@ export class MarketDataService {
     }
     if (any && this.cfg.delayDays > 0) this.#ok('daily-candles');
     this.#emit();
+    /* If some indices got no data (for example the provider was busy), try just those again soon
+       instead of waiting for the next full refresh: after 30 s, then 1, 2 and at most 5 minutes. */
+    const missing = INDEX_IDS.filter(id => !this.quotes[id]);
+    if (!missing.length) { this.retryDelay = 30000; if (this.cfg.delayDays > 0) { this.feed.error = null; this.feed.authError = false; } }
+    else if (!this.retryTimer && !this.stopped) {
+      this.retryTimer = setTimeout(() => { this.retryTimer = null; this.#refreshFromDaily(true); }, this.retryDelay);
+      this.retryDelay = Math.min(this.retryDelay * 2, 300000);
+    }
   }
 
   #startStream() {
@@ -167,9 +177,17 @@ export class MarketDataService {
   getInstruments() { return Object.fromEntries(INDEX_IDS.map(id => [id, { ...this.provider.instruments[id] }])); }
 
   /* History for charts and replay. Returns only candles the provider supplied. */
-  async getIndexHistory(id, range, { raw = false } = {}) {
-    if (!INDEX_BY_ID[id]) throw new Error('Unknown index ' + id);
-    const spec = RANGES[range]; if (!spec) throw new Error('Unknown range ' + range);
+  /* Several players asking for the same history at once share one provider request. */
+  getIndexHistory(id, range, opts = {}) {
+    if (!INDEX_BY_ID[id]) return Promise.reject(new Error('Unknown index ' + id));
+    if (!RANGES[range]) return Promise.reject(new Error('Unknown range ' + range));
+    const key = `${id}|${range}|${!!opts.raw}`, running = this.pending.get(key);
+    if (running) return running;
+    const p = this.#loadHistory(id, range, opts).finally(() => this.pending.delete(key));
+    this.pending.set(key, p); return p;
+  }
+  async #loadHistory(id, range, { raw = false } = {}) {
+    const spec = RANGES[range];
     const today = istDate(), delayed = this.cfg.delayDays > 0 && !raw;
     const ckey = `${id}|${range}|${delayed}`, hit = this.cache.get(ckey), now = Date.now();
     const ttl = spec.kind === 'days' ? 15 * 60000 : this.#sessionOpen('NSE_INDEX') && !delayed ? 60000 : 10 * 60000;
