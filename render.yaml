@@ -1,0 +1,26 @@
+# Render Blueprint for Bullsy: ONE free web service that serves the game and its API.
+services:
+  - type: web
+    name: bullsy
+    runtime: node
+    plan: free
+    buildCommand: "echo 'no build step'"
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # 1 = real data one trading day late (DELAYED). 0 = real time in market hours.
+      - key: BULLSY_DATA_DELAY_DAYS
+        value: "1"
+      # Render asks you to type these. They are never stored in GitHub.
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ANGEL_API_KEY
+        sync: false
+      - key: ANGEL_CLIENT_CODE
+        sync: false
+      - key: ANGEL_PIN
+        sync: false
+      - key: ANGEL_TOTP_SECRET
+        sync: false
